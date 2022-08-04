@@ -1,0 +1,617 @@
+---
+title: "Salt_ProjectAkhir"
+author: "Deswina"
+date: '2022-07-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(readxl)
+library(lubridate)
+library(dplyr)
+library(googlesheets4)
+library(tidyverse)
+library(naniar)
+```
+
+    ### Extract
+
+#Read file
+```{r}
+post <- read_xlsx("Data/ProjectAkhir/Post.xlsx")
+follower_2021 <- read_excel("Data/ProjectAkhir/Follower Brand Data.xlsx", sheet = "Follower Brand Data (2021)")
+follower_2022 <- read_excel("Data/ProjectAkhir/Follower Brand Data.xlsx", sheet = "Follower Brand Data")
+```
+
+
+    
+    ### Transform
+
+
+
+## POST DATA
+
+
+#Try to count the total post of every brands and grouping by Page
+```{r}
+post %>% 
+  group_by(Page) %>% 
+  count()
+```
+#Filter the data based on Page 
+```{r}
+df_post <- post %>% 
+  filter(Page == "Avoskin's Official Instagram" | Page == "avoskinbeauty" | Page == "elsheskin" | Page == "ELSHESKIN" | Page == "Healthy Skin Beautiful Skin" |
+           Page == "SOMETHINC" |  Page == "somethincofficial" |  Page == "ElshéSkin" )
+```
+
+#Change Variable Name
+```{r}
+df_post <- df_post %>% 
+  mutate(Name = ifelse(Page == "Avoskin's Official Instagram", "Avoskin_Instagram",
+                                ifelse(Page == "avoskinbeauty", "Avoskin_Tiktok",
+                                       ifelse(Page == "elsheskin", "Elsheskin_Tiktok",
+                                              ifelse(Page == "Healthy Skin Beautiful Skin" |Page == "ELSHESKIN" | Page ==  "ElshéSkin", "Elsheskin_Instagram",
+                                                     ifelse(Page == "SOMETHINC", "Somethinc_Instagram",
+                                                             "Somethinc_Tiktok"
+                                                     )))))) %>% 
+  select(-Page)
+```
+
+#Check Missing Value in df_post
+```{r}
+miss_var_summary(df_post)
+```
+
+#Check Duplicated in df_post
+```{r}
+sum(duplicated(df_post))
+```
+Drop Duplicated Data
+```{r}
+df_post <- df_post %>% 
+  unique()
+```
+
+#Check NA in Messgae Variable
+```{r}
+df_post %>% 
+  filter(is.na(Message))
+```
+
+#Fill NA in Messages Variable with "NO CAPTION"
+```{r}
+df_post$Message[is.na(df_post$Message)] <- "NO CAPTION"
+```
+
+#Make New Variables to store the new data and change the `Comments and Likes (organic)` into Engagement.
+#Drop `Comments (organic)`, `Likes (organic)`
+```{r}
+df_post <- df_post %>% 
+  mutate(Engagement = `Comments and Likes (organic)`) %>% 
+  select(-`Comments (organic)`, -`Likes (organic)`, -`Comments and Likes (organic)`)  %>% 
+  relocate(Engagement, .after = `Number of Comments (total)`)
+```
+
+#Fill NA in Engagement Variable with the value of the sum of the variables `Number of Likes` and `Number of Comments (total)`
+```{r}
+i1 <- is.na(df_post$Engagement)
+
+df_post$Engagement[i1] <- with(df_post, `Number of Likes`[i1] + `Number of Comments (total)`[i1])
+```
+
+#Check Missing Value in df_post
+```{r}
+miss_var_summary(df_post)
+```
+
+#Convert Date into GMT +7
+```{r}
+df_post <- df_post %>% 
+  mutate(Date = Date + hours(7))
+```
+ 
+  ## Feature Engineering
+  
+
+#add Time Background variable
+```{r}
+df_post <- df_post %>% 
+  mutate(Hour = hour(Date)) %>% 
+  
+  mutate('Time Background' = ifelse(Hour == 6 | Hour == 7 | Hour == 8 | Hour == 9 | Hour == 10 | Hour == 11,
+                                "Morning",
+                                ifelse(Hour == 12 | Hour == 13 | Hour == 14 | Hour == 15 | Hour == 16 | Hour == 17, "Afternoon",
+                                       ifelse(Hour == 18 | Hour == 19 | Hour == 20 | Hour == 21, "Evening" , 
+                                              "Night")))) %>% 
+   relocate(Hour, .after = Date) %>% 
+   relocate(`Time Background`, .after = Hour)
+```
+
+#add Hours Variable
+```{r}
+df_post <- df_post %>% 
+  mutate(Hour = hour(Date)) %>% 
+  relocate(Hour, .after = Date)
+```
+
+
+## DF FOLLOWER
+
+
+
+#Merge follower_2021 and follower_2022 into one variable (Follower)
+```{r}
+follower <- rbind(follower_2021,follower_2022)
+```
+
+#Summary Follower
+```{r}
+summary(follower)
+```
+#Filter the data base on variable
+```{r}
+df_follower <- follower %>% 
+  select(Date, `Avoskin Beauty`, `Avoskin's Official Instagram`, SOMETHINC, `Somethinc Official`, ELSHESKIN, ElsheSkin) %>% 
+  mutate(Avoskin_Tiktok = `Avoskin Beauty`, Avoskin_Instagram = `Avoskin's Official Instagram`, Somethinc_Tiktok = `Somethinc Official`, Somethinc_Instagram = SOMETHINC,
+         Elsheskin_Instagram = ELSHESKIN, ELsheskin_TIktok = ElsheSkin) %>% 
+  select(-`Avoskin Beauty`, -`Avoskin's Official Instagram`, -SOMETHINC, -`Somethinc Official`, -ELSHESKIN, -ElsheSkin)
+```
+
+#Check Duplicated in df_follower
+```{r}
+sum(duplicated(df_follower))
+```
+#Drop DUplicated Data in df_follower
+```{r}
+df_follower <- df_follower %>% 
+  unique()
+```
+
+
+#Check Missing Value in df_follower
+```{r}
+miss_var_summary(df_follower)
+
+df_follower
+```
+
+#Check Missing Value in Somethinc_Tiktok
+```{r}
+df_follower %>% 
+  select(Date, Somethinc_Tiktok)
+```
+
+#Fill Na in df_follower
+```{r}
+df_follower <- df_follower %>% 
+  fill(Somethinc_Tiktok, .direction = "down") %>% 
+  fill(Avoskin_Tiktok, .direction = "down") %>% 
+  fill(ELsheskin_TIktok, .direction = "down")
+  
+```
+#Check Value 0 in df_follower
+```{r}
+df_follower %>% 
+  filter(Avoskin_Tiktok == 0 | Avoskin_Instagram == 0 |  Somethinc_Tiktok == 0 | Somethinc_Instagram == 0 | Elsheskin_Instagram == 0 | ELsheskin_TIktok == 0)
+
+```
+#Change value 0 into nilai dari baris diatasnya
+```{r}
+df_follower <- df_follower %>% 
+  mutate(Somethinc_Tiktok = ifelse(Somethinc_Tiktok == 0, NA,
+                                   Somethinc_Tiktok)) %>% 
+   fill(Somethinc_Tiktok, .direction = "down")
+  
+```
+
+#Check Missing Value in df_follower
+```{r}
+miss_var_summary(df_follower)
+```
+
+#Make new variable named Different that comes from the difference of followers per day
+```{r}
+##Avoskin
+df_follower <- df_follower %>% 
+  mutate(`Growth_av_tt` = `Avoskin_Tiktok`-lag(`Avoskin_Tiktok`)) %>% 
+  relocate(Growth_av_tt, .after = Avoskin_Tiktok)
+
+df_follower <- df_follower %>% 
+  mutate(`Growth_av_ig` = `Avoskin_Instagram`-lag(`Avoskin_Instagram`)) %>% 
+  relocate(Growth_av_ig, .after = Avoskin_Instagram)
+
+
+##Somethinc
+df_follower <- df_follower %>% 
+  mutate(`Growth_so_tt` = `Somethinc_Tiktok`-lag(`Somethinc_Tiktok`)) %>% 
+  relocate(Growth_so_tt, .after = Somethinc_Tiktok)
+
+df_follower <- df_follower %>% 
+  mutate(`Growth_so_ig` = `Somethinc_Instagram`-lag(`Somethinc_Instagram`)) %>% 
+  relocate(Growth_so_ig, .after = Somethinc_Instagram)
+
+
+##Elsheskin
+df_follower <- df_follower %>% 
+  mutate(`Growth_el_tt` = `ELsheskin_TIktok`-lag(`ELsheskin_TIktok`)) %>% 
+  relocate(Growth_el_tt, .after = ELsheskin_TIktok)
+
+df_follower <- df_follower %>% 
+  mutate(`Growth_el_ig` = `Elsheskin_Instagram`-lag(`Elsheskin_Instagram`)) %>% 
+  relocate(Growth_el_ig, .after = Elsheskin_Instagram)
+
+```
+
+
+
+
+
+    ### Load Data
+
+
+
+
+
+#Input JSON from API Key.
+```{r}
+gs4_auth(path = "my_api_key.json")
+```
+
+#Assign the Docs into Variable gsheets.
+```{r}
+gsheet <- gs4_get("https://docs.google.com/spreadsheets/d/1S76OPrihc4NB52MzR7jsLZNGIrrak8HeIOnmMwucYhs/edit#gid=1383616703")
+```
+
+#Put the Data to the Sheets in the test Google Sheets we have.
+```{r}
+range_write(gsheet,
+            df_post,
+            sheet = "DF_Post")
+range_write(gsheet,
+           df_follower,
+           sheet = "DF_Follower")
+```
+
+
+    ### ANALYZE
+
+
+ ## TIKTOK
+ 
+
+#AVOSKIN
+
+# Hours Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "TIKTOK", Name == "Avoskin_Tiktok") %>% 
+  group_by(Hour) %>% 
+  summarise(total = n(), `Mean Engagement` = mean(Engagement)) %>% 
+  arrange(desc(`Mean Engagement`))
+```
+# Time Background Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "TIKTOK", Name == "Avoskin_Tiktok") %>% 
+  group_by(`Time Background`) %>% 
+  summarise(Total = n(), `Mean engagement` = mean(Engagement), sum(Engagement)) %>% 
+  arrange(desc(`Mean engagement`))
+```
+
+
+#Elsheskin
+
+# Hours Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "TIKTOK", Name == "Elsheskin_Tiktok") %>% 
+  group_by(Hour) %>% 
+  summarise(total = n(), `Mean Engagement` = mean(Engagement)) %>% 
+  arrange(desc(`Mean Engagement`))
+```
+# Time Background Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "TIKTOK", Name == "Elsheskin_Tiktok") %>% 
+  group_by(`Time Background`) %>% 
+  summarise(Total = n(), `Mean engagement` = mean(Engagement), sum(Engagement)) %>% 
+  arrange(desc(`Mean engagement`))
+```
+
+
+#Somethinc
+
+# Hours Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "TIKTOK", Name == "Somethinc_Tiktok") %>% 
+  group_by(Hour) %>% 
+  summarise(total = n(), `Mean Engagement` = mean(Engagement)) %>% 
+  arrange(desc(`Mean Engagement`))
+```
+# Time Background Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "TIKTOK", Name == "Somethinc_Tiktok") %>% 
+  group_by(`Time Background`) %>% 
+  summarise(Total = n(), `Mean engagement` = mean(Engagement), sum(Engagement)) %>% 
+  arrange(desc(`Mean engagement`))
+```
+
+
+
+## INSTAGRAM
+
+
+
+#AVOSKIN
+
+# Hours Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "INSTAGRAM", Name == "Avoskin_Instagram") %>% 
+  group_by(Hour) %>% 
+  summarise(total = n(), `Mean Engagement` = mean(Engagement)) %>% 
+  arrange(desc(`Mean Engagement`))
+```
+# Time Background Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "INSTAGRAM", Name == "Avoskin_Instagram") %>% 
+  group_by(`Time Background`) %>% 
+  summarise(Total = n(), `Mean engagement` = mean(Engagement), sum(Engagement)) %>% 
+  arrange(desc(`Mean engagement`))
+```
+
+
+#Elsheskin
+
+# Hours Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "INSTAGRAM", Name == "Elsheskin_Instagram") %>% 
+  group_by(Hour) %>% 
+  summarise(total = n(), `Mean Engagement` = mean(Engagement)) %>% 
+  arrange(desc(`Mean Engagement`))
+```
+# Time Background Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "INSTAGRAM", Name == "Elsheskin_Instagram") %>% 
+  group_by(`Time Background`) %>% 
+  summarise(Total = n(), `Mean engagement` = mean(Engagement), sum(Engagement)) %>% 
+  arrange(desc(`Mean engagement`))
+```
+
+
+#Somethinc
+
+# Hours Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "INSTAGRAM", Name == "Somethinc_Instagram") %>% 
+  group_by(Hour) %>% 
+  summarise(total = n(), `Mean Engagement` = mean(Engagement)) %>% 
+  arrange(desc(`Mean Engagement`))
+```
+# Time Background Posts That Have the Highest Average Engagement
+```{r}
+df_post %>% 
+  filter(Network == "INSTAGRAM", Name == "Somethinc_Instagram") %>% 
+  group_by(`Time Background`) %>% 
+  summarise(Total = n(), `Mean engagement` = mean(Engagement), sum(Engagement)) %>% 
+  arrange(desc(`Mean engagement`))
+```
+
+
+      
+      
+      
+      
+      ######## PECAH DF POST
+      
+      
+      
+      
+      
+```{r}
+df_post_avoskin <- df_post %>% 
+  filter(Name == "Avoskin_Tiktok" | Name == "Avoskin_Instagram")
+
+
+df_post_somethinc<- df_post %>% 
+  filter(Name == "Somethinc_Tiktok" | Name == "Somethinc_Instagram")
+
+df_post_elsheskin <- df_post %>% 
+  filter(Name == "Elsheskin_Tiktok" | Name == "Elsheskin_Instagram")
+```
+
+
+#Make new variable named group that comes from grouping caption
+#Avoskin
+```{r}
+df_post_avoskin <- df_post_avoskin %>%  
+  mutate(Caption = tolower(Message)) %>% 
+  mutate(group = case_when(grepl("webseries",Caption) ~ "Web Series",
+                           grepl("web series",Caption) ~ "Web Series",
+                           grepl("webseriesavoskin",Caption) ~ "Web Series",
+                           grepl("meetavoskin",Caption) ~ "Meet Avoskin",
+                           grepl("meet avoskin",Caption) ~ "Meet Avoskin",
+                           grepl("offline event",Caption) ~ "Meet Avoskin",
+                           grepl("challenge", Caption) ~ "Challenge",
+                           grepl("tantang", Caption) ~ "Challenge",
+                           grepl("giveaway", Caption) ~ "Giveaway",
+                           grepl("bagi-bagi", Caption) ~ "Giveaway",
+                           grepl("promo",Caption) ~ "Promo",
+                           grepl("cashback",Caption) ~ "Promo",
+                           grepl("hemat",Caption) ~ "Promo",
+                           grepl("gratis",Caption) ~ "Promo",
+                           grepl("potongan",Caption) ~ "Promo",
+                           grepl("free",Caption) ~ "Promo",
+                           grepl("potongan",Caption) ~ "Promo",
+                           grepl("diskon",Caption) ~ "Promo",
+                           grepl("sale",Caption) ~ "Promo",
+                           grepl("tips",Caption) ~ "Recommendation",
+                           grepl("rekomendasi",Caption) ~ "Recommendation",
+                           grepl("kunci",Caption) ~ "Recommendation",
+                           grepl("rahasia",Caption) ~ "Recommendation",
+                           grepl("fungsi",Caption) ~ "Recommendation",
+                           grepl("info",Caption) ~ "Recommendation",
+                           grepl("bingung",Caption) ~ "Recommendation",
+                           grepl("komen yuk",Caption) ~ "Interaction",
+                           grepl("share yuk",Caption) ~ "Interaction",
+                           grepl("first impression",Caption) ~ "Interaction",
+                           grepl("pengalamanmu",Caption) ~ "Interaction",
+                           grepl("konsultasi",Caption) ~ "Interaction",
+                           grepl("sahabat avo?",Caption) ~ "Interaction",
+                           grepl("dong",Caption) ~ "Interaction",
+                           grepl("request",Caption) ~ "Interaction",
+                           grepl("ygy",Caption) ~ "Interaction",
+                           grepl("absen dulu",Caption) ~ "Interaction",
+                           grepl("di bawah",Caption) ~ "Interaction",
+                           grepl("relate",Caption) ~ "Interaction",
+                           grepl("", Caption, ignore.case = TRUE) ~"Others"))
+```
+
+#Somethinc
+```{r}
+df_post_somethinc <- df_post_somethinc %>%  
+  mutate(Caption = tolower(Message)) %>% 
+  mutate(group = case_when(grepl("giveaway", Caption) ~ "Giveaway",
+                           grepl("bagi-bagi", Caption) ~ "Giveaway",
+                           grepl("promo",Caption) ~ "Promo",
+                           grepl("cashback",Caption) ~ "Promo",
+                           grepl("hemat",Caption) ~ "Promo",
+                           grepl("gratis",Caption) ~ "Promo",
+                           grepl("potongan",Caption) ~ "Promo",
+                           grepl("free",Caption) ~ "Promo",
+                           grepl("potongan",Caption) ~ "Promo",
+                           grepl("diskon",Caption) ~ "Promo",
+                           grepl("sale",Caption) ~ "Promo",
+                           grepl("tips",Caption) ~ "Recommendation",
+                           grepl("rekomendasi",Caption) ~ "Recommendation",
+                           grepl("kunci",Caption) ~ "Recommendation",
+                           grepl("kenapa sih",Caption) ~ "Recommendation",
+                           grepl("kupas",Caption) ~ "Recommendation",
+                           grepl("rahasia",Caption) ~ "Recommendation",
+                           grepl("fungsi",Caption) ~ "Recommendation",
+                           grepl("info",Caption) ~ "Recommendation",
+                           grepl("bingung",Caption) ~ "Recommendation",
+                           grepl("tutorial",Caption) ~ "Recommendation",
+                           grepl("komen yuk",Caption) ~ "Interaction",
+                           grepl("share yuk",Caption) ~ "Interaction",
+                           grepl("first impression",Caption) ~ "Interaction",
+                           grepl("pengalamanmu",Caption) ~ "Interaction",
+                           grepl("konsultasi",Caption) ~ "Interaction",
+                           grepl("sahabat avo?",Caption) ~ "Interaction",
+                           grepl("dong",Caption) ~ "Interaction",
+                           grepl("request",Caption) ~ "Interaction",
+                           grepl("ygy",Caption) ~ "Recommendation",
+                           grepl("absen dulu",Caption) ~ "Interaction",
+                           grepl("di bawah",Caption) ~ "Interaction",
+                           grepl("relate",Caption) ~ "Interaction",
+                           grepl("", Caption, ignore.case = TRUE) ~"Others"))
+```
+
+#Elsheskin
+```{r}
+df_post_elsheskin<- df_post_elsheskin %>%  
+  mutate(Caption = tolower(Message)) %>% 
+  mutate(group = case_when(grepl("giveaway", Caption) ~ "Giveaway",
+                           grepl("bagi-bagi", Caption) ~ "Giveaway",
+                           grepl("hadiah", Caption) ~ "Giveaway",
+                           grepl("promo",Caption) ~ "Promo",
+                           grepl("cashback",Caption) ~ "Promo",
+                           grepl("hemat",Caption) ~ "Promo",
+                           grepl("gratis",Caption) ~ "Promo",
+                           grepl("potongan",Caption) ~ "Promo",
+                           grepl("free",Caption) ~ "Promo",
+                           grepl("potongan",Caption) ~ "Promo",
+                           grepl("diskon",Caption) ~ "Promo",
+                           grepl("sale",Caption) ~ "Promo",
+                           grepl("gift",Caption) ~ "Promo",
+                           grepl("tips",Caption) ~ "Recommendation",
+                           grepl("rekomendasi",Caption) ~ "Recommendation",
+                           grepl("hati-hati",Caption) ~ "Recommendation",
+                           grepl("kunci",Caption) ~ "Recommendation",
+                           grepl("rahasia",Caption) ~ "Recommendation",
+                           grepl("fungsi",Caption) ~ "Recommendation",
+                           grepl("info",Caption) ~ "Recommendation",
+                           grepl("optimal",Caption) ~ "Recommendation",
+                           grepl("maksimal",Caption) ~ "Recommendation",
+                           grepl("cari tahu",Caption) ~ "Recommendation",
+                           grepl("fakta",Caption) ~ "Recommendation",
+                           grepl("bingung",Caption) ~ "Recommendation",
+                           grepl("solusi",Caption) ~ "Recommendation",
+                           grepl("kesalahan",Caption) ~ "Recommendation",
+                           grepl("hacks",Caption) ~ "Recommendation",
+                           grepl("komen yuk",Caption) ~ "Interaction",
+                           grepl("kurangin",Caption) ~ "Interaction",
+                           grepl("share yuk",Caption) ~ "Interaction",
+                           grepl("kasih tau",Caption) ~ "Interaction",
+                           grepl("kasih tahu",Caption) ~ "Interaction",
+                           grepl("comment",Caption) ~ "Interaction",
+                           grepl("first impression",Caption) ~ "Interaction",
+                           grepl("pengalamanmu",Caption) ~ "Interaction",
+                           grepl("konsultasi",Caption) ~ "Interaction",
+                           grepl("sahabat avo?",Caption) ~ "Interaction",
+                           grepl("dong",Caption) ~ "Interaction",
+                           grepl("request",Caption) ~ "Interaction",
+                           grepl("ygy",Caption) ~ "Interaction",
+                           grepl("absen dulu",Caption) ~ "Interaction",
+                           grepl("di bawah",Caption) ~ "Interaction",
+                           grepl("hayo",Caption) ~ "Interaction",
+                           grepl("relate",Caption) ~ "Interaction",
+                           grepl("nih?",Caption) ~ "Interaction",
+                           grepl("", Caption, ignore.case = TRUE) ~"Others"))
+```
+  
+```{r}
+ndf_post <- rbind(df_post_elsheskin, df_post_avoskin, df_post_somethinc)
+```
+      
+      
+      
+      ### Load Data
+
+
+
+#Input JSON from API Key.
+```{r}
+gs4_auth(path = "my_api_key.json")
+```
+
+#Assign the Docs into Variable gsheets.
+```{r}
+gsheet <- gs4_get("https://docs.google.com/spreadsheets/d/1S76OPrihc4NB52MzR7jsLZNGIrrak8HeIOnmMwucYhs/edit#gid=1383616703")
+```
+
+#Put the Data to the Sheets in the test Google Sheets we have.
+```{r}
+range_write(gsheet,
+            df_post_avoskin,
+            sheet = "NDF_Post")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
